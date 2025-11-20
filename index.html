@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>五日報表互動教學系統 v3.1</title>
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --accent-color: #3498db;
+            --bg-color: #f4f7f6;
+            --plus-color: #27ae60;
+            --minus-color: #c0392b;
+            --result-bg: #fdf2e9;
+            --drag-highlight: #e8f8f5;
+            --drag-border: #1abc9c;
+        }
+
+        body {
+            font-family: "Microsoft JhengHei", Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: var(--bg-color);
+            display: flex;
+            gap: 20px;
+            height: 100vh;
+            box-sizing: border-box;
+        }
+
+        /* 左側：報表區 */
+        .report-container {
+            flex: 3; 
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+            table-layout: fixed; 
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            vertical-align: top; /* 改為靠上對齊，配合多行備註 */
+            word-wrap: break-word;
+        }
+
+        th {
+            background-color: var(--primary-color);
+            color: white;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        /* --- 版面寬度設定 --- */
+        .col-name { width: 25%; }
+        .col-box { width: 40%; }
+        .col-amount { width: 10%; }
+        .col-note { width: 25%; }
+
+        .item-name {
+            font-weight: bold;
+            color: #333;
+            font-size: 0.9em;
+            padding-top: 5px;
+        }
+
+        .indent-1 { padding-left: 15px; font-size: 0.85em; color: #555; }
+        .indent-2 { padding-left: 30px; font-size: 0.85em; color: #777; }
+
+        .sign-plus { color: var(--plus-color); font-weight: bold; }
+        .sign-minus { color: var(--minus-color); font-weight: bold; }
+
+        .result-row {
+            background-color: var(--result-bg);
+            font-weight: bold;
+            font-size: 1.1em;
+            border-top: 2px solid #333;
+        }
+
+        .amount-cell {
+            text-align: right;
+            font-family: 'Courier New', monospace;
+            padding-top: 5px;
+        }
+
+        /* 方框容器 */
+        .box-container {
+            min-height: 40px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            align-items: center;
+            transition: background 0.2s, border 0.2s;
+            border: 2px solid transparent;
+            border-radius: 4px;
+            padding: 2px;
+        }
+
+        .box-container.drag-over {
+            background-color: var(--drag-highlight);
+            border: 2px dashed var(--drag-border);
+        }
+
+        /* 方框樣式 */
+        .data-box {
+            background-color: var(--accent-color);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: grab;
+            display: inline-flex;
+            align-items: center;
+            box-shadow: 1px 1px 3px rgba(0,0,0,0.2);
+            user-select: none;
+            white-space: nowrap; 
+            margin-bottom: 2px;
+        }
+        
+        .data-box:active { cursor: grabbing; }
+        .data-box:hover { background-color: #2980b9; }
+
+        .data-box .remove-btn {
+            margin-left: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            opacity: 0.7;
+            border-left: 1px solid rgba(255,255,255,0.3);
+            padding-left: 6px;
+        }
+        .data-box .remove-btn:hover { opacity: 1; }
+
+        /* --- 備註欄樣式 (修改為 Textarea) --- */
+        .note-input {
+            width: 95%;
+            border: 1px solid transparent; /* 平常隱藏邊框 */
+            border-bottom: 1px dashed #ccc;
+            background: transparent;
+            outline: none;
+            color: #444;
+            font-size: 0.9em;
+            font-family: inherit;
+            resize: vertical; /* 允許垂直拉伸 */
+            min-height: 3em;  /* 預設高度 */
+            line-height: 1.4;
+            padding: 2px;
+            box-sizing: border-box;
+        }
+        .note-input:focus {
+            border: 1px solid var(--accent-color);
+            background-color: #fff;
+            color: #000;
+            border-radius: 4px;
+        }
+
+        /* 右側：控制區 */
+        .control-panel {
+            flex: 1;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            height: fit-content;
+        }
+
+        h2, h3 { margin-top: 0; color: var(--primary-color); }
+
+        .input-group { display: flex; flex-direction: column; gap: 5px; }
+        label { font-weight: bold; font-size: 0.9em; }
+        
+        input, select, button {
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+
+        button {
+            background-color: var(--plus-color);
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: background 0.2s;
+            font-weight: bold;
+        }
+        button:hover { background-color: #219150; }
+        
+        .reset-btn { background-color: var(--minus-color); margin-top: 10px; }
+        .reset-btn:hover { background-color: #a93226; }
+
+        .tutorial-note {
+            background-color: #e8f6f3;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 5px solid var(--accent-color);
+            font-size: 0.9em;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="report-container">
+        <h2>📅 五日報表 (互動教學 v3.1)</h2>
+        <table id="reportTable">
+            <thead>
+                <tr>
+                    <th class="col-name">項目名稱</th>
+                    <th class="col-box">金額來源(名目)</th>
+                    <th class="col-amount">小計</th>
+                    <th class="col-note">備註 (自動換行)</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+                </tbody>
+        </table>
+    </div>
+
+    <div class="control-panel">
+        <h3>🛠️ 新增方框</h3>
+        <div class="tutorial-note">
+            <p><strong>功能說明：</strong></p>
+            1. <strong>預設資料</strong>：系統已自動載入部分項目供教學演示。<br>
+            2. <strong>拖曳修正</strong>：試著把「五D報表」的方框拖到其他列。<br>
+            3. <strong>備註編輯</strong>：已改為自動換行，若文字過長可拉動右下角調整高度。
+        </div>
+
+        <div class="input-group">
+            <label>方框名稱 (名目)</label>
+            <input type="text" id="inputName" placeholder="例如：陳小姐繳水費">
+        </div>
+
+        <div class="input-group">
+            <label>金額</label>
+            <input type="number" id="inputAmount" placeholder="輸入金額" min="0">
+        </div>
+
+        <div class="input-group">
+            <label>歸屬項目</label>
+            <select id="inputCategory">
+                </select>
+        </div>
+
+        <button onclick="addBox()">➕ 新增方框</button>
+        <button class="reset-btn" onclick="resetAll()">⚠️ 恢復預設值</button>
+    </div>
+
+<script>
+    // --- 1. 報表定義與預設備註 ---
+    const reportStructure = [
+        { id: '1', name: '1. 五D報表', sign: 1, type: 'input', level: 0, defaultNote: '系統今日所有銷帳' },
+        { id: '2', name: '2. 卡4', sign: -1, type: 'input', level: 0 },
+        { id: '2.1', name: '2.1 強制還原', sign: -1, type: 'input', level: 1 },
+        { id: '2.2', name: '2.2 發票折讓', sign: -1, type: 'input', level: 1 },
+        { id: '3', name: '3. 保證金', sign: -1, type: 'input', level: 0 },
+        { id: '3.1', name: '3.1 臨時用水保證金', sign: -1, type: 'input', level: 1 },
+        { id: '3.2', name: '3.2 延管工程保證金', sign: -1, type: 'input', level: 1 },
+        { id: '4', name: '4. 存簿利息收入', sign: 1, type: 'input', level: 0 },
+        
+        { id: '5', name: '5. 本日應入帳金額', sign: 0, type: 'calc', level: 0, defaultNote: '核對OK' }, 
+        
+        { id: '6', name: '6. 統一彙繳', sign: -1, type: 'input', level: 0 },
+        { id: '7', name: '7. 媒體代繳', sign: -1, type: 'input', level: 0, defaultNote: '代繳自動【入帳】，表示銀行會匯錢' },
+        { id: '8', name: '8. 媒體代收', sign: -1, type: 'input', level: 0 },
+        { id: '9', name: '9. 信用卡繳費平台', sign: -1, type: 'input', level: 0 },
+        { id: '10_up', name: '10. 非媒體代收繳入區處', sign: -1, type: 'input', level: 0 },
+        { id: '11', name: '11. 手續費', sign: -1, type: 'input', level: 0 },
+        { id: '12', name: '12. 匯款繳費入區處', sign: -1, type: 'input', level: 0 ,defaultNote: '【人工已銷帳】，錢來自【一區】合庫15151。特殊VIP或【異常報表】需人工處理'},
+        { id: '13_up', name: '13. 匯款繳費入本所', sign: -1, type: 'input', level: 0 },
+        { id: '14_local', name: '14. 他區代收 (本區)', sign: -1, type: 'input', level: 0 , defaultNote: '錢在【你家】=【別區】'},
+        { id: '14_other', name: '14. 他區代收 (他區)', sign: -1, type: 'input', level: 1 },
+        { id: '15_local', name: '15. 代收他區 (本區)', sign: 1, type: 'input', level: 0 , defaultNote: '錢在【我家】=【1區】'},
+        { id: '15_other', name: '15. 代收他區 (他區)', sign: 1, type: 'input', level: 1 },
+        { id: '16', name: '16. 本月預收次月水費', sign: 1, type: 'input', level: 0 },
+        { id: '17', name: '17. 本月扣抵上月預收', sign: -1, type: 'input', level: 0 },
+        { id: '28.1', name: '28.1 信用卡退貨(還原)', sign: 1, type: 'input', level: 0 },
+
+        { id: '18', name: '18. 本日櫃台應繳金額', sign: 0, type: 'calc', level: 0 },
+
+        { id: '10_down', name: '10. 非媒體代收繳入本所', sign: -1, type: 'input', level: 0 },
+        { id: '13_down', name: '13. 匯款繳費入本所(+)', sign: 1, type: 'input', level: 0 },
+        { id: '19', name: '19. 他所代收匯款入本所', sign: 1, type: 'input', level: 0 },
+        { id: '28_down', name: '28. 臨櫃信用卡匯入區處', sign: -1, type: 'input', level: 0 , defaultNote: '聯卡中心明日會匯錢(=區處15151)'},
+
+        { id: '20', name: '20. 本所應匯款金額', sign: 0, type: 'calc', level: 0 },
+
+        { id: '21', name: '21. 支票已兌金額', sign: 1, type: 'input', level: 0 },
+        { id: '22', name: '22. 支票未兌金額', sign: -1, type: 'input', level: 0 },
+
+        { id: '23', name: '23. 本日匯款單合計', sign: 0, type: 'calc', level: 0, defaultNote: '【★重要】廠所需要解繳(=匯到區處15151)的錢' }
+    ];
+
+    // --- 預設方框資料 ---
+    const defaultBoxData = [
+        { categoryId: '1', name: '臨櫃收金', amount: 12000 },
+        { categoryId: '1', name: '代收繳自動銷帳', amount: 3500 },
+        { categoryId: '1', name: 'HY自動銷帳', amount: 800 },
+	  { categoryId: '1', name: '今日用戶櫃台信用卡刷卡', amount: 1000 },
+        { categoryId: '7', name: '代收繳自動入帳', amount: 3500 },
+        { categoryId: '7', name: 'HY自動銷帳', amount: 800 },
+        { categoryId: '28_down', name: '今日用戶刷卡', amount: 1000 }
+    ];
+
+    let itemTotals = {}; 
+    let itemBoxes = {};
+
+    function init() {
+        const tbody = document.getElementById('tableBody');
+        const select = document.getElementById('inputCategory');
+        tbody.innerHTML = '';
+        select.innerHTML = '<option value="" disabled selected>請選擇項目...</option>';
+
+        itemBoxes = {};
+        reportStructure.forEach(item => {
+            itemTotals[item.id] = 0;
+            itemBoxes[item.id] = [];
+        });
+
+        defaultBoxData.forEach(data => {
+            itemBoxes[data.categoryId].push({
+                id: Date.now() + Math.random(), 
+                name: data.name,
+                amount: data.amount
+            });
+        });
+
+        reportStructure.forEach(item => {
+            const tr = document.createElement('tr');
+            if(item.type === 'calc') tr.classList.add('result-row');
+
+            let nameHtml = `<div class="${item.level === 1 ? 'indent-1' : ''} ${item.level === 2 ? 'indent-2' : ''}">${item.name}</div>`;
+            if (item.sign === 1) nameHtml += ` <span class="sign-plus">(+)</span>`;
+            if (item.sign === -1) nameHtml += ` <span class="sign-minus">(-)</span>`;
+            
+            let boxHtml = '';
+            if (item.type === 'input') {
+                boxHtml = `<div class="box-container" id="box-container-${item.id}" 
+                            ondragover="allowDrop(event)" 
+                            ondragleave="leaveDrop(event)"
+                            ondrop="drop(event, '${item.id}')"></div>`;
+            } else {
+                boxHtml = `<div style="color:#ccc; font-size:12px;"></div>`;
+            }
+
+            let amountHtml = `<div id="amount-${item.id}" class="amount-cell">0</div>`;
+
+            // 修改點: 改用 textarea 實現自動換行
+            const defaultText = item.defaultNote ? item.defaultNote : '';
+            let noteHtml = `<textarea class="note-input" placeholder="...">${defaultText}</textarea>`;
+
+            tr.innerHTML = `
+                <td class="item-name">${nameHtml}</td>
+                <td>${boxHtml}</td>
+                <td>${amountHtml}</td>
+                <td>${noteHtml}</td>
+            `;
+            tbody.appendChild(tr);
+
+            if(item.type === 'input') {
+                const option = document.createElement('option');
+                option.value = item.id;
+                option.text = item.name + (item.sign === 1 ? ' (+)' : ' (-)');
+                select.appendChild(option);
+            }
+        });
+
+        Object.keys(itemBoxes).forEach(id => renderBoxes(id));
+    }
+
+    // --- 邏輯部分維持不變 ---
+
+    function addBox() {
+        const name = document.getElementById('inputName').value;
+        const amount = parseFloat(document.getElementById('inputAmount').value);
+        const categoryId = document.getElementById('inputCategory').value;
+
+        if (!name || isNaN(amount) || !categoryId) {
+            alert('請輸入完整資料');
+            return;
+        }
+
+        itemBoxes[categoryId].push({ 
+            id: Date.now(), 
+            name, 
+            amount 
+        });
+
+        renderBoxes(categoryId);
+        calculate();
+
+        document.getElementById('inputName').value = '';
+        document.getElementById('inputAmount').value = '';
+    }
+
+    function removeBox(categoryId, boxId) {
+        itemBoxes[categoryId] = itemBoxes[categoryId].filter(b => b.id !== boxId);
+        renderBoxes(categoryId);
+        calculate();
+    }
+
+    function drag(ev, categoryId, boxId) {
+        const data = JSON.stringify({ sourceCategory: categoryId, boxId: boxId });
+        ev.dataTransfer.setData("text", data);
+        ev.dataTransfer.effectAllowed = "move";
+    }
+
+    function allowDrop(ev) {
+        ev.preventDefault();
+        ev.currentTarget.classList.add('drag-over');
+    }
+
+    function leaveDrop(ev) {
+        ev.currentTarget.classList.remove('drag-over');
+    }
+
+    function drop(ev, targetCategory) {
+        ev.preventDefault();
+        ev.currentTarget.classList.remove('drag-over');
+
+        const dataStr = ev.dataTransfer.getData("text");
+        if (!dataStr) return;
+        
+        const data = JSON.parse(dataStr);
+        const sourceCategory = data.sourceCategory;
+        const boxId = data.boxId;
+
+        if (sourceCategory === targetCategory) return;
+
+        const boxIndex = itemBoxes[sourceCategory].findIndex(b => b.id === boxId);
+        if (boxIndex === -1) return;
+        const boxData = itemBoxes[sourceCategory][boxIndex];
+
+        itemBoxes[sourceCategory].splice(boxIndex, 1);
+        itemBoxes[targetCategory].push(boxData);
+
+        renderBoxes(sourceCategory);
+        renderBoxes(targetCategory);
+        calculate();
+    }
+
+    function renderBoxes(id) {
+        const container = document.getElementById(`box-container-${id}`);
+        if(!container) return;
+        container.innerHTML = '';
+        
+        let sum = 0;
+        itemBoxes[id].forEach((box) => {
+            sum += box.amount;
+            const boxEl = document.createElement('div');
+            boxEl.className = 'data-box';
+            boxEl.draggable = true;
+            boxEl.ondragstart = (event) => drag(event, id, box.id);
+            
+            boxEl.innerHTML = `
+                ${box.name}: ${box.amount}
+                <span class="remove-btn" onclick="removeBox('${id}', ${box.id})">×</span>
+            `;
+            container.appendChild(boxEl);
+        });
+
+        itemTotals[id] = sum;
+        
+        const sign = reportStructure.find(i => i.id === id).sign;
+        const amountEl = document.getElementById(`amount-${id}`);
+        amountEl.innerText = (sum * sign);
+        amountEl.style.color = sign === 1 ? 'var(--plus-color)' : 'var(--minus-color)';
+    }
+
+    function calculate() {
+        const val = (id) => {
+            const item = reportStructure.find(i => i.id === id);
+            if (!item) return 0;
+            if (item.type === 'calc') return itemTotals[id] || 0;
+            return (itemTotals[id] || 0) * item.sign;
+        };
+
+        let total5 = val('1') + val('2') + val('2.1') + val('2.2') + val('3') + val('3.1') + val('3.2') + val('4');
+        updateResultRow('5', total5);
+
+        let adjustTo18 = 
+            val('6') + val('7') + val('8') + val('9') + val('10_up') + 
+            val('11') + val('12') + val('13_up') + val('14_local') + val('14_other') + 
+            val('15_local') + val('15_other') + val('16') + val('17') + val('28.1');
+        let total18 = total5 + adjustTo18;
+        updateResultRow('18', total18);
+
+        let adjustTo20 = val('10_down') + val('13_down') + val('19') + val('28_down');
+        let total20 = total18 + adjustTo20;
+        updateResultRow('20', total20);
+
+        let total23 = total20 + val('21') + val('22');
+        updateResultRow('23', total23);
+    }
+
+    function updateResultRow(id, value) {
+        itemTotals[id] = value;
+        const el = document.getElementById(`amount-${id}`);
+        el.innerText = value;
+        el.style.color = value >= 0 ? 'blue' : 'red';
+    }
+
+    function resetAll() {
+        if(confirm('確定要恢復成預設狀態嗎？(新增的資料會消失)')) {
+            init();
+            calculate();
+        }
+    }
+
+    init();
+    calculate();
+</script>
+</body>
+</html>
