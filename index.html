@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>五日報表互動教學系統 v3.5 (紅藍方框版)</title>
+    <title>五日報表互動教學系統 v3.6 (自動加總優化版)</title>
     <style>
         :root {
             --primary-color: #2c3e50;
@@ -89,6 +89,15 @@
             border-top: 2px solid #333;
         }
 
+        /* --- [新增] 特殊網底樣式 --- */
+        .row-locked {
+            background-color: #eeeeee; /* 淺灰色：用於 2 和 3 (鎖死) */
+            color: #555;
+        }
+        .row-highlight {
+            background-color: #fffcf0; /* 淺黃色：用於 14 和 15 */
+        }
+
         .amount-cell {
             text-align: right;
             font-family: 'Courier New', monospace;
@@ -133,7 +142,7 @@
             background-color: #2980b9;
         }
         
-        /* 負項方框 (紅色) - 新增樣式 */
+        /* 負項方框 (紅色) */
         .data-box.minus {
             background-color: var(--minus-color);
         }
@@ -351,7 +360,7 @@
     </button>
 
     <div class="report-container">
-        <h2>📅 五日報表 (互動教學 v3.5)</h2>
+        <h2>📅 五日報表 (互動教學 v3.6)</h2>
         <div class="table-responsive">
             <table id="reportTable">
                 <thead>
@@ -375,7 +384,7 @@
             <p><strong>功能說明：</strong></p>
             1. <strong>互動操作</strong>：由此處新增金額方框。<br>
             2. <strong>顏色區分</strong>：<span style="color:var(--accent-color); font-weight:bold;">藍色為加項</span>，<span style="color:var(--minus-color); font-weight:bold;">紅色為減項</span>。<br>
-            3. <strong>備註功能</strong>：支援複製貼上<strong>彩色</strong>文字。
+            3. <strong>自動鎖定</strong>：項目2和3為自動計算，不可手動新增。
         </div>
 
         <div class="input-group">
@@ -399,14 +408,24 @@
 
 <script>
     /* --- 報表定義 --- */
+    /* 修改說明：
+       1. 將 id: '2' 和 id: '3' 的 type 改為 'summary' (自定義類型)，
+          表示這兩項不再是輸入項，而是純粹的顯示/計算項。
+       2. 移除了 defaultNote，讓它更乾淨，或者您可以保留。
+    */
     const reportStructure = [
         { id: '1', name: '1. 五D報表', sign: 1, type: 'input', level: 0, defaultNote: '1、系統今日所有「<span style="color:red;">銷帳</span>」。<br>2、正常水費、其他費款收費等等。' },
-        { id: '2', name: '2. 卡4', sign: -1, type: 'input', level: 0 ,defaultNote: '1、還原or折讓'},
+        
+        // 修改：Card 4 鎖定
+        { id: '2', name: '2. 卡4', sign: -1, type: 'summary', level: 0 ,defaultNote: '1、自動加總：強制還原 + 發票折讓'},
         { id: '2.1', name: '2.1 強制還原', sign: -1, type: 'input', level: 1 },
         { id: '2.2', name: '2.2 發票折讓', sign: -1, type: 'input', level: 1 },
-        { id: '3', name: '3. 保證金', sign: -1, type: 'input', level: 0 },
+        
+        // 修改：保證金 鎖定
+        { id: '3', name: '3. 保證金', sign: -1, type: 'summary', level: 0, defaultNote: '1、自動加總：臨時用水 + 延管工程' },
         { id: '3.1', name: '3.1 臨時用水保證金', sign: -1, type: 'input', level: 1 },
         { id: '3.2', name: '3.2 延管工程保證金', sign: -1, type: 'input', level: 1 },
+        
         { id: '4', name: '4. 存簿利息收入', sign: 1, type: 'input', level: 0 },
         
         { id: '5', name: '5. 本日應入帳金額', sign: 0, type: 'calc', level: 0, defaultNote: '核對OK' }, 
@@ -427,13 +446,14 @@
           defaultNote: '1、<span style="color:red;">【人工銷帳】</span>。<br>2、錢來自<span style="color:blue;">【一區】合庫15151</span>。<br>3、特殊<span style="color:red;">VIP</span>(三總醫院)或<span style="color:red;">【異常報表】</span>需人工處理<br>4、5000元催收，借用15151人工銷帳'},
         
         { id: '13_up', name: '13. 匯款繳費入本所', sign: -1, type: 'input', level: 0 },
-        { id: '14_local', name: '14. 他區代收 (本區)', sign: -1, type: 'input', level: 0,defaultNote:'1、【1區的所】收【1區的所】。<br><del>2、全家都是我家。</del>' },
         
+        { id: '14_local', name: '14. 他區代收 (本區)', sign: -1, type: 'input', level: 0,defaultNote:'1、【1區的所】收【1區的所】。<br><del>2、全家都是我家。</del>' },
         { id: '14_other', name: '14. 他區代收 (他區)', sign: -1, type: 'input', level: 1 , 
           defaultNote: '錢在<span style="background-color:#fffacd; padding:0 2px;">【你家】=【別區】</span>'},
         
         { id: '15_local', name: '15. 代收他區 (本區)', sign: 1, type: 'input', level: 0 ,defaultNote:'1、【1區的所】收【1區的所】。<br><del>2、全家都是我家。</del>'},
         { id: '15_other', name: '15. 代收他區 (他區)', sign: 1, type: 'input', level: 1, defaultNote: '錢在<span style="background-color:#fffacd; padding:0 2px;">【我家】=【1區】</span>}' },
+        
         { id: '16', name: '16. 本月預收次月水費', sign: 1, type: 'input', level: 0 },
         { id: '17', name: '17. 本月扣抵上月預收', sign: -1, type: 'input', level: 0 },
         { id: '28.1', name: '28.1 信用卡退貨(還原)', sign: 1, type: 'input', level: 0 ,defaultNote:'1、請盡量<span style="color:red;">當日</span>退刷or退現金。<br>2、主要是手續費難搞，會造成阿谷的困擾。'},
@@ -489,20 +509,33 @@
 
         reportStructure.forEach(item => {
             const tr = document.createElement('tr');
+            
+            // 樣式判斷
             if(item.type === 'calc') tr.classList.add('result-row');
+            
+            // [新增] 為 2和3 添加鎖定樣式
+            if(item.id === '2' || item.id === '3') {
+                tr.classList.add('row-locked');
+            }
+            // [新增] 為 14_local 和 15_local 添加高亮樣式
+            if(item.id === '14_local' || item.id === '15_local') {
+                tr.classList.add('row-highlight');
+            }
 
             let nameHtml = `<div class="${item.level === 1 ? 'indent-1' : ''} ${item.level === 2 ? 'indent-2' : ''}">${item.name}</div>`;
             if (item.sign === 1) nameHtml += ` <span class="sign-plus">(+)</span>`;
             if (item.sign === -1) nameHtml += ` <span class="sign-minus">(-)</span>`;
             
             let boxHtml = '';
+            // 只有 type 為 'input' 才產生拖拉區，summary 和 calc 都不產生
             if (item.type === 'input') {
                 boxHtml = `<div class="box-container" id="box-container-${item.id}" 
                             ondragover="allowDrop(event)" 
                             ondragleave="leaveDrop(event)"
                             ondrop="drop(event, '${item.id}')"></div>`;
             } else {
-                boxHtml = `<div style="color:#ccc; font-size:12px;"></div>`;
+                // 鎖定區或計算區顯示空白或提示
+                boxHtml = `<div style="color:#ccc; font-size:12px; font-style:italic; min-height:40px; line-height:40px;">${item.type==='summary'?'(自動計算)':''}</div>`;
             }
 
             let amountHtml = `<div id="amount-${item.id}" class="amount-cell">0</div>`;
@@ -517,6 +550,7 @@
             `;
             tbody.appendChild(tr);
 
+            // 只有 'input' 類型才加入下拉選單，這樣就無法選到 2 和 3
             if(item.type === 'input') {
                 const option = document.createElement('option');
                 option.value = item.id;
@@ -626,12 +660,12 @@
 
     function renderBoxes(id) {
         const container = document.getElementById(`box-container-${id}`);
+        // 如果是 summary 類型 (如 2, 3) 沒有 box-container，直接 return
         if(!container) return;
+        
         container.innerHTML = '';
         
-        // 取得該項目的設定，判斷是正項還是負項
         const itemData = reportStructure.find(i => i.id === id);
-        // sign: 1 (正項), sign: -1 (負項)
         const isNegative = itemData && itemData.sign === -1;
 
         let sum = 0;
@@ -639,7 +673,6 @@
             sum += box.amount;
             const boxEl = document.createElement('div');
             
-            // 根據正負項添加不同的 class (正項預設, 負項加 minus)
             boxEl.className = `data-box ${isNegative ? 'minus' : ''}`;
             boxEl.draggable = true;
             boxEl.ondragstart = (event) => drag(event, id, box.id);
@@ -663,11 +696,34 @@
         const val = (id) => {
             const item = reportStructure.find(i => i.id === id);
             if (!item) return 0;
-            if (item.type === 'calc') return itemTotals[id] || 0;
+            if (item.type === 'calc' || item.type === 'summary') return itemTotals[id] || 0;
             return (itemTotals[id] || 0) * item.sign;
         };
+        
+        // [新增功能] 自動計算 2 和 3 的總和
+        // 2 = 2.1 + 2.2
+        // 因為 2.1, 2.2 是 input，val() 回傳的是 (金額 * -1)
+        // 我們需要的是總量(負值)，所以直接相加 val 即可
+        let sum2 = val('2.1') + val('2.2');
+        itemTotals['2'] = sum2; // 存起來方便後續取用
+        updateResultRow('2', sum2);
 
-        let total5 = val('1') + val('2') + val('2.1') + val('2.2') + val('3') + val('3.1') + val('3.2') + val('4');
+        // 3 = 3.1 + 3.2
+        let sum3 = val('3.1') + val('3.2');
+        itemTotals['3'] = sum3;
+        updateResultRow('3', sum3);
+
+
+        // [修改] 計算第 5 項
+        // 注意：原本公式是 val('1') + val('2') + ...
+        // 但現在 val('2') = val('2.1') + val('2.2')
+        // 如果我們寫 val('1') + val('2') + val('2.1') + val('2.2') 會重複計算！
+        // 解決方法：公式只加總「細項」(2.1, 2.2)，不加總「母項」(2)。
+        let total5 = val('1') + 
+                     val('2.1') + val('2.2') +  // 不加 val('2')
+                     val('3.1') + val('3.2') +  // 不加 val('3')
+                     val('4');
+                     
         updateResultRow('5', total5);
 
         let adjustTo18 = 
@@ -686,10 +742,19 @@
     }
 
     function updateResultRow(id, value) {
-        itemTotals[id] = value;
+        // 如果是 type='summary' 且 sign=-1，傳入的 value 已經是負數，這裡只是負責顯示顏色
+        // 我們統一將數值存在 itemTotals[id] 中 (對於 calc/summary 類型，我們存的是結果值)
+        if(!itemTotals[id]) itemTotals[id] = value;
+
         const el = document.getElementById(`amount-${id}`);
-        el.innerText = value;
-        el.style.color = value >= 0 ? 'blue' : 'red';
+        if(el) {
+            el.innerText = value;
+            // 負數顯示紅色，正數顯示藍色 (或依據您的 sign 定義)
+            // 這裡簡單用數值正負判斷
+            if(value > 0) el.style.color = 'blue';
+            else if(value < 0) el.style.color = 'red';
+            else el.style.color = 'black';
+        }
     }
 
     function resetAll() {
